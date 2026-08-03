@@ -1,6 +1,19 @@
-
+import os
 import pandas as pd
+import gradio as gr
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.vectorstores import FAISS
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_core.documents import Document
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.output_parsers import StrOutputParser
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_groq import ChatGroq
 
+# ---------------------------------------------------------------------------
+# 0. Generate FAQ Dataset
+# ---------------------------------------------------------------------------
 faq_data = {
     "Category": [
         "Program Overview", "Program Structure", "Program Structure",
@@ -36,20 +49,6 @@ faq_data = {
 
 df = pd.DataFrame(faq_data)
 df.to_excel("pragyan_faq_prices.xlsx", index=False)
-print("✅ Created 'pragyan_faq_prices.xlsx' with PragyanAI presentation data!")
-
-import os
-import pandas as pd
-import gradio as gr
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_core.documents import Document
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.output_parsers import StrOutputParser
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain_groq import ChatGroq
 
 # ---------------------------------------------------------------------------
 # 1. System Prompts specifically grounded in PragyanAI Data
@@ -92,7 +91,6 @@ Behavior Guidelines:
 2. Emphasize that PragyanAI engineers are class-hired builders capable of deploying live applications immediately."""
 }
 
-
 # ---------------------------------------------------------------------------
 # 2. Vector Store Indexer (Loads Excel FAQ + PDF Documents)
 # ---------------------------------------------------------------------------
@@ -103,7 +101,7 @@ def load_documents_into_vectorstore(file_paths=None):
     global vectorstore
     docs = []
 
-    # 1. Process UI file uploads (PDFs or Excel files)
+    # Process UI file uploads
     if file_paths:
         for file in file_paths:
             path = file.name if hasattr(file, 'name') else file
@@ -116,14 +114,13 @@ def load_documents_into_vectorstore(file_paths=None):
                     content = " | ".join([f"{col}: {val}" for col, val in row.items()])
                     docs.append(Document(page_content=content, metadata={"source": path}))
 
-    # 2. Automatically load default Excel FAQ if present locally
+    # Automatically load local default Excel FAQ
     if os.path.exists("pragyan_faq_prices.xlsx"):
         excel_df = pd.read_excel("pragyan_faq_prices.xlsx")
         for _, row in excel_df.iterrows():
             content = " | ".join([f"{col}: {val}" for col, val in row.items()])
             docs.append(Document(page_content=content, metadata={"source": "pragyan_faq_prices.xlsx"}))
 
-    # Fallback knowledge base if no files are loaded
     if not docs:
         docs = [
             Document(page_content="PragyanAI Program: 6 Months Offline Training + 12 Months Placement Drive. Led by Sateesh Ambesange."),
@@ -131,22 +128,16 @@ def load_documents_into_vectorstore(file_paths=None):
         ]
 
     vectorstore = FAISS.from_documents(docs, embeddings)
-    return f"✅ PragyanAI Knowledge Base updated successfully with {len(docs)} document chunks!"
+    return f"✅ Knowledge base initialized with {len(docs)} document chunks!"
 
 # Build initial index
 load_documents_into_vectorstore()
-import streamlit as st
-
-API_KEY = st.secrets["MY_API_KEY"]
 
 # ---------------------------------------------------------------------------
 # 3. Groq LLM & LCEL RAG Pipeline
 # ---------------------------------------------------------------------------
-
-import streamlit as st
-
-# Retrieve the key from Streamlit secrets
-groq_api_key = st.secrets["MY_API_KEY"]
+# Fetch API Key from OS Environment variables (standard for Gradio / HF Spaces)
+groq_api_key = os.getenv("GROQ_API_KEY", "your_fallback_groq_key_here")
 
 llm = ChatGroq(
     groq_api_key=groq_api_key,
@@ -174,6 +165,7 @@ def create_rag_chain(persona_name: str, retrieved_context: str):
     ])
 
     return prompt | llm | StrOutputParser()
+
 # ---------------------------------------------------------------------------
 # 4. Gradio Callbacks
 # ---------------------------------------------------------------------------
@@ -181,7 +173,6 @@ def respond(message, history, persona_name):
     if not message.strip():
         return ""
 
-    # Search top relevant snippets
     retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
     relevant_docs = retriever.invoke(message)
     context_str = "\n".join([f"- {doc.page_content}" for doc in relevant_docs])
@@ -205,6 +196,7 @@ def clear_chat_history(persona_name):
     session_id = f"pragyan_session_{persona_name.replace(' ', '_')}"
     if session_id in store:
         store[session_id].clear()
+
 # ---------------------------------------------------------------------------
 # 5. Gradio User Interface
 # ---------------------------------------------------------------------------
@@ -225,7 +217,11 @@ with gr.Blocks(title="PragyanAI Intelligent Assistant") as demo:
                 file_count="multiple",
                 file_types=[".pdf", ".xlsx", ".xls"]
             )
-            upload_status = gr.Textbox(label="Knowledge Base Status", value="PragyanAI presentation FAQ pre-loaded.", interactive=False)
+            upload_status = gr.Textbox(
+                label="Knowledge Base Status",
+                value="PragyanAI presentation FAQ pre-loaded.",
+                interactive=False
+            )
             file_uploader.change(fn=load_documents_into_vectorstore, inputs=[file_uploader], outputs=[upload_status])
 
         with gr.Column(scale=3):

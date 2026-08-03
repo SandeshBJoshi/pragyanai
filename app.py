@@ -135,9 +135,9 @@ def load_documents_into_vectorstore(file_paths=None):
 
 # Build initial index
 load_documents_into_vectorstore()
-from google.colab import userdata
-# Retrieve your key
-groq_api_key = userdata.get('groq_key')
+import streamlit as st
+
+API_KEY = st.secrets["MY_API_KEY"]
 
 # ---------------------------------------------------------------------------
 # 3. Groq LLM & LCEL RAG Pipeline

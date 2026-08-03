@@ -143,10 +143,15 @@ API_KEY = st.secrets["MY_API_KEY"]
 # 3. Groq LLM & LCEL RAG Pipeline
 # ---------------------------------------------------------------------------
 
+import streamlit as st
+
+# Retrieve the key from Streamlit secrets
+groq_api_key = st.secrets["MY_API_KEY"]
+
 llm = ChatGroq(
     groq_api_key=groq_api_key,
     model_name="llama-3.3-70b-versatile",
-    temperature=0.3
+    temperature=0.3,
 )
 
 store = {}
